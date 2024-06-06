@@ -1,0 +1,3 @@
+Pasta::20
+Pizza::30
+Soup

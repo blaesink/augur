@@ -1,14 +1,36 @@
 mod file;
 mod roll;
+mod table;
 mod ui;
 
 use anyhow::Result;
 use file::read_lines;
+use roll::Roll;
 use std::{collections::HashMap, fs};
+use table::{Table, WeightedTable};
 use ui::handle_menu;
 
+fn prettify_snake_case(str: String) -> Option<String> {
+    str.rsplit(".")
+        .last()
+        .and_then(|s| Some(s.split('_')))
+        .and_then(|split| {
+            Some(
+                split
+                    .map(|s| {
+                        let mut v = s.chars().collect::<Vec<char>>();
+                        v[0].make_ascii_uppercase();
+
+                        Some(v.into_iter().collect::<String>())
+                    })
+                    .collect::<Option<Vec<String>>>()?,
+            )
+        })
+        .and_then(|s| Some(s.join(" ")))
+}
+
 fn main() -> Result<()> {
-    let mut hm = HashMap::<String, Vec<String>>::new();
+    let mut hm = HashMap::<String, Box<dyn Roll<String>>>::new();
     let resource_files = fs::read_dir("./resources/")?
         .filter_map(|f| {
             f.ok().and_then(|e| {
@@ -20,34 +42,30 @@ fn main() -> Result<()> {
         .collect::<Vec<String>>();
 
     for file in resource_files {
-        hm.insert(
-            file.clone()
-                .rsplit(".")
-                .last()
-                .and_then(|s| Some(s.split('_')))
-                .and_then(|split| {
-                    Some(
-                        split
-                            .map(|s| {
-                                let mut v = s.chars().collect::<Vec<char>>();
-                                v[0].make_ascii_uppercase();
+        let lines = read_lines(format!("resources/{file}"))?
+            .filter_map(|l| l.ok())
+            .collect::<Vec<String>>();
 
-                                Some(v.into_iter().collect::<String>())
-                            })
-                            .collect::<Option<Vec<String>>>()?,
-                    )
-                })
-                .ok_or_else(|| anyhow::anyhow!("Non-readable filename {}", file))?
-                .join(" "),
-            // Values (opening the file and reading its contents to a vec)
-            read_lines(format!("resources/{file}"))?
-                .filter_map(|l| l.ok().and_then(|s| Some(s)))
-                .collect::<Vec<String>>(),
+        // if let Ok(wt) = WeightedTable::try_from(lines) {
+        //     let tab = Box::new(wt);
+        // } else {
+        //     let tab = Box::new(Table(lines));
+        // }
+        let tab: Box<dyn Roll<String>> = match WeightedTable::try_from(lines.clone()) {
+            Ok(wt) => Box::new(wt),
+            Err(_) => Box::new(Table(lines)),
+        };
+        hm.insert(
+            prettify_snake_case(file)
+                .ok_or_else(|| anyhow::anyhow!("Couldn't prettify filename!"))?,
+            tab,
         );
     }
     hm.insert(
         String::from("Roll d20"),
-        (0..20).map(|i| i.to_string()).collect::<Vec<String>>(),
+        Box::new(crate::table::Table(
+            (0..20).map(|i| i.to_string()).collect::<Vec<String>>(),
+        )),
     );
     handle_menu(&hm)?;
 

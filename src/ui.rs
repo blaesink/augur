@@ -1,7 +1,7 @@
 /*!
     Handle things like arrow keys for selecting menus etc.
 */
-use crate::roll::roll;
+use crate::roll::Roll;
 use anyhow::{anyhow, Context, Result};
 use crossterm::{
     event::{read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
@@ -10,9 +10,9 @@ use crossterm::{
 };
 use std::{collections::HashMap, io::stdout};
 
-type Menu = HashMap<String, Vec<String>>;
+type Menu<T> = HashMap<String, Box<dyn Roll<T>>>;
 
-pub fn handle_menu(menu: &HashMap<String, Vec<String>>) -> Result<()> {
+pub fn handle_menu(menu: &Menu<String>) -> Result<()> {
     enable_raw_mode().with_context(|| "Couldn't enable raw mode!")?;
     Ok(select_menu_arrow_keys(menu)?)
 }
@@ -28,7 +28,7 @@ fn is_arrow_key(event: &KeyEvent) -> Option<KeyCode> {
     }
 }
 
-fn print_menu(cursor_index: usize, menu: &HashMap<String, Vec<String>>) {
+fn print_menu(cursor_index: usize, menu: &Menu<String>) {
     for (i, opt) in menu.keys().enumerate() {
         if cursor_index == i {
             println!("> {}. {opt}\r", i + 1);
@@ -38,7 +38,7 @@ fn print_menu(cursor_index: usize, menu: &HashMap<String, Vec<String>>) {
     }
 }
 
-fn show_and_clear(msg: impl Into<String>, cursor_index: usize, menu: &Menu) -> Result<()> {
+fn show_and_clear(msg: impl Into<String>, cursor_index: usize, menu: &Menu<String>) -> Result<()> {
     stdout().execute(Clear(ClearType::All))?;
     println!("{}", msg.into());
     std::thread::sleep(std::time::Duration::from_millis(700));
@@ -48,7 +48,7 @@ fn show_and_clear(msg: impl Into<String>, cursor_index: usize, menu: &Menu) -> R
     Ok(())
 }
 
-fn select_menu_arrow_keys(menu: &HashMap<String, Vec<String>>) -> Result<()> {
+fn select_menu_arrow_keys(menu: &HashMap<String, Box<dyn Roll<String>>>) -> Result<()> {
     // Show a '>' key next to the current item.
     let options = menu.keys().into_iter().collect::<Vec<&String>>();
     let mut cursor_index = 0usize;
@@ -83,7 +83,7 @@ fn select_menu_arrow_keys(menu: &HashMap<String, Vec<String>>) -> Result<()> {
                         println!("\nRolling {current_key}...\r");
                         let result = menu
                             .get(current_key)
-                            .and_then(|k| roll(k))
+                            .and_then(|k| k.roll())
                             .with_context(|| "Bad roll!")?;
                         show_and_clear(format!("-> {result}\r"), cursor_index, menu)?;
                     }
